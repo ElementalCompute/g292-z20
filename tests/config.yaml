@@ -1,0 +1,12 @@
+cpu:
+  model_contains: "AMD EPYC 7402"
+mem:
+  dimms_expected: 8        # how many populated DIMMs you expect
+  per_dimm_gib: 64         # expected size of each DIMM in GiB
+  speed_mhz: 2666      # minimum acceptable configured speed
+  size_tolerance_gib: 0.5  # ± tolerance to allow for reporting quirks
+nvbandwidth:
+  bin: "/home/danucore/nvbandwidth/nvbandwidth"   # adjust if different
+  min_h2d_gbps: 26.0                 # good floor for PCIe4 x16; raise if you want stricter
+gpus:
+  expect_count: 8
