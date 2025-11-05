@@ -87,3 +87,4 @@ ipmitool -I open user list "$chan" | awk -v uid="$admin_uid" '$1==uid'
 echo
 echo "Note: Some BMCs apply LAN changes after a BMC reboot. If unreachable on the new IP, you can do:"
 echo "      ipmitool -I open bmc reset cold   # (host stays up)"
+ipmitool -I open bmc reset cold
