@@ -72,10 +72,6 @@ ipmitool -I open lan set "$chan" ipaddr   "$IP"
 ipmitool -I open lan set "$chan" netmask  "$NETMASK"
 ipmitool -I open lan set "$chan" defgw ipaddr "$GATEWAY"
 
-# (Optional) sane ARP defaults
-ipmitool -I open lan set "$chan" arp respond off || true
-ipmitool -I open lan set "$chan" arp generate on || true
-
 echo
 echo "BMC LAN config after changes:"
 ipmitool -I open lan print "$chan" | egrep 'IP Address Source|IP Address|Subnet|Default Gateway|802\.1q VLAN|VLAN ID' || true
