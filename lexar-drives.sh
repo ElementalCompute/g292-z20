@@ -31,7 +31,7 @@ detect_lexar_drives() {
     fi
 
     # Get list of Lexar drives using nvme-cli
-    NVME_JSON=$(nvme list -o json 2>/dev/null)
+    NVME_JSON=$(sudo nvme list -o json 2>/dev/null)
     if [ -z "$NVME_JSON" ]; then
         echo "ERROR: Failed to get nvme list"
         exit 1
@@ -143,7 +143,7 @@ do_status() {
 
     # Try to detect drives
     if command -v nvme &> /dev/null; then
-        NVME_JSON=$(nvme list -o json 2>/dev/null || echo "")
+        NVME_JSON=$(sudo nvme list -o json 2>/dev/null || echo "")
         if [ -n "$NVME_JSON" ]; then
             DRIVES=($(python3 -c "
 import json, sys

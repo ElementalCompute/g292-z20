@@ -100,16 +100,22 @@ def test_has_one_approx_256gb_drive():
 
 
 def _get_mount_point(device_path):
-    """Get the mount point for a device, returns None if not mounted."""
+    """Get the mount point for a device or its partitions."""
     try:
+        # Use lsblk to get mount points for device and all partitions
         result = subprocess.run(
-            ["findmnt", "-n", "-o", "TARGET", device_path],
+            ["lsblk", "-n", "-o", "MOUNTPOINT", device_path],
             capture_output=True,
             text=True,
             check=False,
         )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
+        if result.returncode == 0:
+            # lsblk returns multiple lines if there are partitions
+            # Return the first non-empty mount point
+            for line in result.stdout.strip().split('\n'):
+                mount_point = line.strip()
+                if mount_point:
+                    return mount_point
     except Exception:
         pass
     return None
