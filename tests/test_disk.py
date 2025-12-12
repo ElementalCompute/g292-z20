@@ -126,6 +126,13 @@ def _run_fio_verify_test(test_file_path, size_mb=100):
     Run fio write/verify test on a specific file path.
     Returns (success: bool, message: str)
     """
+    # Clean up any leftover test file from previous interrupted runs
+    try:
+        if os.path.exists(test_file_path):
+            os.remove(test_file_path)
+    except Exception:
+        pass  # Ignore cleanup errors
+
     # fio test: write with verification, then cleanup
     cmd = [
         "fio",
@@ -159,6 +166,13 @@ def _run_fio_verify_test(test_file_path, size_mb=100):
         return False, f"fio failed: {err_msg[:200]}"
     except Exception as e:
         return False, f"Unexpected error: {str(e)}"
+    finally:
+        # Explicit cleanup in case fio was interrupted or --unlink=1 failed
+        try:
+            if os.path.exists(test_file_path):
+                os.remove(test_file_path)
+        except Exception:
+            pass  # Don't fail the test due to cleanup issues
 
 
 def test_lexar_drives_write_functionality(cfg):

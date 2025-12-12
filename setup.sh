@@ -6,13 +6,16 @@ sudo apt install -y ipmitool fio
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Create virtualenv in the repo directory
-python3 -m venv "${SCRIPT_DIR}/.venv"
+# Create virtualenv in the repo directory if it doesn't exist
+if [ ! -f "${SCRIPT_DIR}/.venv/bin/python3" ]; then
+  echo "Creating virtual environment at ${SCRIPT_DIR}/.venv"
+  python3 -m venv "${SCRIPT_DIR}/.venv"
+else
+  echo "Virtual environment already exists at ${SCRIPT_DIR}/.venv"
+fi
 
-# Install requirements
-"${SCRIPT_DIR}/.venv/bin/pip" install -r "${SCRIPT_DIR}/requirements.txt"
-
-echo "Virtual environment created at ${SCRIPT_DIR}/.venv"
+# Install/update requirements
+"${SCRIPT_DIR}/.venv/bin/pip" install -q -r "${SCRIPT_DIR}/requirements.txt"
 
 
 # nvbandwidth setup
@@ -34,28 +37,46 @@ if [ ! -d "$NVBW_DIR/.git" ]; then
   git clone https://github.com/NVIDIA/nvbandwidth.git "$NVBW_DIR"
 fi
 
-cd "$NVBW_DIR"
-
-# Clean any old in-source cmake state and rebuild cleanly
-rm -f CMakeCache.txt
-rm -rf CMakeFiles build
-mkdir -p build
-
 CAP="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n1 | tr -d '.' )"
 if [ -z "${CAP}" ]; then
   echo "ERROR: failed to read compute capability from nvidia-smi" >&2
   exit 1
 fi
-echo "Building nvbandwidth for sm_${CAP}"
-
-cmake -S . -B build \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_CUDA_ARCHITECTURES="${CAP}" \
-  -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc
-
-cmake --build build -j
 
 BIN="$NVBW_DIR/build/nvbandwidth"
+
+# Check if binary already exists with correct architecture
+if [ -x "$BIN" ]; then
+  if /usr/local/cuda/bin/cuobjdump --list-elf "$BIN" 2>/dev/null | grep -q "sm_${CAP}"; then
+    echo "nvbandwidth already built with correct architecture (sm_${CAP}) at $BIN"
+    # Skip rebuild but ensure symlink is updated
+    sudo ln -sfn "$BIN" /usr/local/bin/nvbandwidth
+    echo "Symlinked /usr/local/bin/nvbandwidth -> $BIN"
+    exit 0
+  else
+    echo "Existing binary has wrong architecture, rebuilding for sm_${CAP}"
+  fi
+fi
+
+# Build in subshell to avoid changing working directory
+(
+  cd "$NVBW_DIR"
+
+  # Clean any old in-source cmake state and rebuild cleanly
+  rm -f CMakeCache.txt
+  rm -rf CMakeFiles build
+  mkdir -p build
+
+  echo "Building nvbandwidth for sm_${CAP}"
+
+  cmake -S . -B build \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_CUDA_ARCHITECTURES="${CAP}" \
+    -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc
+
+  cmake --build build -j
+)
+
 if [ ! -x "$BIN" ]; then
   echo "ERROR: build succeeded but $BIN not found/executable" >&2
   exit 1

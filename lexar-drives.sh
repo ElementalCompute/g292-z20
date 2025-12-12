@@ -65,25 +65,10 @@ do_mount() {
     done
     echo ""
 
-    # Create mount points
-    for i in "${!DRIVES[@]}"; do
-        MOUNT_POINT="${MOUNT_BASE}${i}"
-        if [ ! -d "$MOUNT_POINT" ]; then
-            echo "Creating mount point: $MOUNT_POINT"
-            sudo mkdir -p "$MOUNT_POINT"
-        fi
-    done
-
     # Mount each drive
     for i in "${!DRIVES[@]}"; do
         DEV="${DRIVES[$i]}"
         MOUNT_POINT="${MOUNT_BASE}${i}"
-
-        # Check if already mounted
-        if mountpoint -q "$MOUNT_POINT" 2>/dev/null; then
-            echo "$DEV already mounted at $MOUNT_POINT"
-            continue
-        fi
 
         # Check if device exists
         if [ ! -b "$DEV" ]; then
@@ -91,17 +76,46 @@ do_mount() {
             continue
         fi
 
-        # Check if device has a filesystem
-        FS_TYPE=$(sudo blkid -o value -s TYPE "$DEV" 2>/dev/null || echo "")
+        # Check if device or its partitions are already mounted somewhere
+        EXISTING_MOUNT=$(lsblk -n -o MOUNTPOINT "$DEV" 2>/dev/null | grep -v '^$' | head -n1 || echo "")
+
+        if [ -n "$EXISTING_MOUNT" ]; then
+            echo "$DEV already mounted at $EXISTING_MOUNT (skipping)"
+            continue
+        fi
+
+        # Detect the best device to mount (partition p1 if exists, else whole device)
+        MOUNT_DEV="$DEV"
+        PART1="${DEV}p1"
+
+        if [ -b "$PART1" ]; then
+            # Partition exists, prefer it over whole device
+            MOUNT_DEV="$PART1"
+        fi
+
+        # Check if target device has a filesystem
+        FS_TYPE=$(sudo blkid -o value -s TYPE "$MOUNT_DEV" 2>/dev/null || echo "")
 
         if [ -z "$FS_TYPE" ]; then
-            echo "WARNING: $DEV has no filesystem, creating ext4..."
-            sudo mkfs.ext4 -F "$DEV"
+            echo "WARNING: $MOUNT_DEV has no filesystem, creating ext4..."
+            sudo mkfs.ext4 -F "$MOUNT_DEV"
             FS_TYPE="ext4"
         fi
 
-        echo "Mounting $DEV ($FS_TYPE) at $MOUNT_POINT"
-        sudo mount "$DEV" "$MOUNT_POINT"
+        # Create mount point if needed
+        if [ ! -d "$MOUNT_POINT" ]; then
+            echo "Creating mount point: $MOUNT_POINT"
+            sudo mkdir -p "$MOUNT_POINT"
+        fi
+
+        # Check if target mount point already in use
+        if mountpoint -q "$MOUNT_POINT" 2>/dev/null; then
+            echo "$MOUNT_POINT already in use, skipping"
+            continue
+        fi
+
+        echo "Mounting $MOUNT_DEV ($FS_TYPE) at $MOUNT_POINT"
+        sudo mount "$MOUNT_DEV" "$MOUNT_POINT"
 
         # Set permissions so tests can write
         sudo chmod 777 "$MOUNT_POINT"
@@ -109,9 +123,9 @@ do_mount() {
 
     echo ""
     echo "=== Mount status ==="
-    df -h | grep -E "(Filesystem|nvme_test)" || true
+    df -h | grep -E "(Filesystem|nvme)" || true
     echo ""
-    echo "Drives mounted successfully!"
+    echo "Drives ready for testing!"
     echo "Run tests with: ./run.sh"
 }
 
@@ -157,11 +171,11 @@ print(' '.join(lexar_devs))
 
             if [ ${#DRIVES[@]} -gt 0 ]; then
                 echo "Detected ${#DRIVES[@]} Lexar drive(s):"
-                for i in "${!DRIVES[@]}"; do
-                    DEV="${DRIVES[$i]}"
-                    MOUNT_POINT="${MOUNT_BASE}${i}"
-                    if mountpoint -q "$MOUNT_POINT" 2>/dev/null; then
-                        echo "  ✓ $DEV → MOUNTED at $MOUNT_POINT"
+                for DEV in "${DRIVES[@]}"; do
+                    # Check if device or its partitions are mounted anywhere
+                    EXISTING_MOUNT=$(lsblk -n -o MOUNTPOINT "$DEV" 2>/dev/null | grep -v '^$' | head -n1 || echo "")
+                    if [ -n "$EXISTING_MOUNT" ]; then
+                        echo "  ✓ $DEV → MOUNTED at $EXISTING_MOUNT"
                     else
                         echo "  ✗ $DEV → NOT MOUNTED"
                     fi
@@ -175,8 +189,8 @@ print(' '.join(lexar_devs))
     fi
 
     echo ""
-    echo "Active test mounts:"
-    df -h | grep nvme_test || echo "  (none)"
+    echo "All NVMe mounts:"
+    df -h | grep -E "(Filesystem|nvme)" || echo "  (none)"
 }
 
 # Main script logic
